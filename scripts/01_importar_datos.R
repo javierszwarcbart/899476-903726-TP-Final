@@ -1,51 +1,73 @@
-# scripts/01_importar_datos.R
+# Instalar paquetes en caso de no tenerlos.
 
-# 1. Carga de librerías
+# Carga de librerías
+library(here)         
 library(tidyverse)    
 library(lubridate)    
 library(readxl)       
+library(stringr)      
 
-# 2. Definición de rutas
-raw_path   <- "raw"
-input_path <- "input"
+# Definir rutas
+raw_path   <- here("raw")
+input_path <- here("input")
 
-# 3. Listar todos los archivos de datos
+# Listar archivos de entrada
 files <- list.files(
   path       = raw_path,
   pattern    = "\\.(xlsx|xls|csv)$",
   full.names = TRUE
 )
 
-# 4. Función de lectura “inteligente”
-read_file <- function(file) {
-  ext <- tolower(tools::file_ext(file))
+# Función de lectura
+read_file <- function(f) {
+  ext <- tolower(tools::file_ext(f))
+  message("→ Procesando ", basename(f))
   
   if (ext %in% c("xlsx", "xls")) {
-    df <- read_excel(file)
+    df <- read_excel(f)
     
   } else if (ext == "csv") {
-    # leer CSV con ';', deshabilitando parsing de comillas
     df <- read_delim(
-      file            = file,
-      delim           = ";",
-      quote           = "",
-      trim_ws         = TRUE,
-      show_col_types  = FALSE,
-      locale          = locale(decimal_mark=".", grouping_mark=",")
+      file           = f,
+      delim          = ";",
+      quote          = "",
+      trim_ws        = TRUE,
+      show_col_types = FALSE,
+      locale         = locale(decimal_mark=".", grouping_mark=",")
     ) %>%
-      # quitar comillas sobrantes al inicio/final de cada campo
+      
       mutate(across(everything(), ~ str_remove_all(., '^"|"$')))
-    
-  } 
- 
+  } else {
+    stop("Extensión no soportada: ", ext)
+  }
+  
 }
 
-# 5. Leer y combinar todos los archivos en un tibble
-datos_subte <- files %>%
-  set_names() %>%          
-  map_dfr(read_file)      
+# Leer y unir los archivos
+datos_subte <- map_dfr(files, read_file)
 
-# 6. Parsear FECHA y horas con lubridate
+# Limpiar nombres
+names(datos_subte) <- str_remove_all(names(datos_subte), '^"|"$')
+
+# Eliminar columnas duplicadas por nombre
+datos_subte <- datos_subte[, !duplicated(names(datos_subte))]
+
+# Seleccionar 10 columnas válidas
+datos_subte <- datos_subte %>%
+  select(
+    FECHA,
+    DESDE,
+    HASTA,
+    LINEA,
+    MOLINETE,
+    ESTACION,
+    pax_pagos,
+    pax_pases_pagos,
+    pax_franq,
+    pax_TOTAL
+  )
+
+# Acomodar Fecha y Hora
 datos_subte <- datos_subte %>%
   mutate(
     FECHA = dmy(FECHA),
@@ -53,11 +75,6 @@ datos_subte <- datos_subte %>%
     HASTA = hms(HASTA)
   )
 
-# 7. Crear la carpeta input/ si no existe
-if (!dir.exists(input_path)) {
-  dir.create(input_path)
-}
-
-# 8. Guardar el CSV combinado
-output_file <- file.path(input_path, "datos_subte_completo.csv")
+# Guardar CSV
+output_file <- here("input", "datos_subte_completo.csv")
 write_csv(datos_subte, output_file)
