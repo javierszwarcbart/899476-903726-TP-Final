@@ -1,0 +1,6 @@
+Mínimo diario: 38778
+Máximo diario: 973558
+Media diaria: 553260.1
+Mediana diaria: 648100.5
+Desv. est. diaria: 241289
+
